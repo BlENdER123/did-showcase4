@@ -485,6 +485,9 @@ a:hover {
 	margin-bottom: 5px;
 	border-bottom: 1px solid #000;
 }
+.modal-did-document>.content-document>.menu-item>div>input {
+	margin: 5px;
+}
 // .modal-did-document>.content-document>.new-did>.curent-attr {
 // 	padding-bottom: 5px;
 // 	margin-bottom: 5px;
@@ -502,6 +505,7 @@ a:hover {
 .modal-did-document>.content-document>.new-did>.curent-attr>div>button {
 	border: 1px solid #000;
 	border-radius: 4px;
+	margin-right: 5px;
 }
 // .modal-did-document>.content-document>.new-did>.new-attr {
 // 	padding-bottom: 5px;

@@ -25,7 +25,7 @@ const {TonClient} = require("@tonclient/core");
 TonClient.useBinaryLibrary(libWeb);
 
 const client = new TonClient({network: {endpoints: ["net.ton.dev"]}});
-//const client = new TonClient({network: {endpoints: ["main.ton.dev"]}});
+// const client = new TonClient({network: {endpoints: ["main.ton.dev"]}});
 
 //const bip39 = require('bip39');
 const pidCrypt = require("pidcrypt");

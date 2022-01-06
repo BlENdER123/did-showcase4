@@ -6,7 +6,6 @@ import {Account} from "@tonclient/appkit";
 import {libWeb} from "@tonclient/lib-web";
 import {signerKeys, TonClient, signerNone} from "@tonclient/core";
 
-
 // import {DidStorageContract} from "./contracts/DidStorageContract.js";
 import {DEXClientContract} from "../extensions/contracts/testNet/DEXClientMainNet.js";
 // import {DidDocumentContract} from "./contracts/DidDocumentContract.js";
@@ -15,6 +14,10 @@ import {DidStorageContract} from "./contracts/new/DidStorageContractNew.js";
 import {DidDocumentContract} from "./contracts/new/DidDocumentContractNew.js";
 
 import {useQuery} from "react-query";
+
+import * as ed from 'noble-ed25519';
+
+import sha256 from 'crypto-js/sha256';
 
 
 //const {TonClient} = require("@tonclient/core");
@@ -29,8 +32,6 @@ require("pidcrypt/aes_cbc");
 
 // let dexrootAddr =
 // 	"0:c9e74798ee45b2e57661162dedeb81e8d015402f56c597747120e0de295f7441";
-
-// let dexrootAddr = "0:bf598f890ca98e1d86957f28911fea31d5ce8f4551913ecc64da453a4144bef0";
 
 let dexrootAddr = "0:ee63d43c1f5ea924d3d47c5a264ad2661b5a4193963915d89f3116315350d7d3";
 
@@ -59,9 +60,10 @@ let walletAddr =
 // 		}),
 // 	}).then((response) => response.json());
 
+
 const ton = new ProviderRpcClient();
 
-function WelcomeDidPageEver() {
+function WelcomeDidPage() {
 	const [didDoc, setDidDoc] = useState();
 
 	const seed = sessionStorage.seed;
@@ -77,6 +79,18 @@ function WelcomeDidPageEver() {
 	const attributes = ["id","@context","controller","alsoKnownAs","verificationMethod","authentication","assertionMethod","keyAgreement","capabilityInvocation","capabilityDelegation","service"];
 
 	const [curentAttr, setCurentAttr] = useState();
+
+	const [curentStatus, setCurentStatus] = useState();
+
+	const [curentPub , setCurentPub] = useState();
+
+	const [curentAddr, setCurentAddr] = useState();
+
+	const [alertW, setAlertW] = useState({
+		hidden: true,
+		text: "",
+		title: ""
+	});
 
 	async function getClientKeys(phrase) {
 		//todo change with only pubkey returns
@@ -105,8 +119,35 @@ function WelcomeDidPageEver() {
 	// 	});
 	// });
 
+	async function getClientBalance(clientAddress) {
+		console.log("clientAddress", clientAddress);
+		let address = clientAddress;
+		if (
+			clientAddress ===
+			"0:0000000000000000000000000000000000000000000000000000000000000000"
+		)
+			return 0;
+		try {
+			let clientBalance = await client.net.query_collection({
+				collection: "accounts",
+				filter: {
+					id: {
+						eq: address,
+					},
+				},
+				result: "balance",
+			});
+			console.log("clientBalance", clientBalance);
+			return +clientBalance.result[0].balance / 1000000000;
+		} catch (e) {
+			console.log("catch E", e);
+			return e;
+		}
+	}
+
 	async function createDID3() {
 
+		setLoader(true);
 		console.log('initInpageProvider...');
         
         const provider = await import('ton-inpage-provider');
@@ -127,6 +168,9 @@ function WelcomeDidPageEver() {
             throw new Error('Insufficient permissions');
         }
 
+		console.log(`${"0x"+accountInteraction.publicKey}`);
+		console.log("0x"+accountInteraction.publicKey);
+
 		try {
 			const newDIDDoc = {
 				id: "did:everscale:" +accountInteraction.publicKey.toString(),
@@ -137,9 +181,9 @@ function WelcomeDidPageEver() {
 				],
 				publicKey: accountInteraction.publicKey.toString(),
 				verificationMethod: {
-					id: null,
+					id: "did:everscale:" +accountInteraction.publicKey.toString(),
 					type: "Ed25519VerificationKey2020",
-					controller: null,
+					controller: "did:everscale:" +accountInteraction.publicKey.toString(),
 					publicKeyMultibase: accountInteraction.publicKey,
 				},
 			};
@@ -167,200 +211,262 @@ function WelcomeDidPageEver() {
 			console.log(e);
 		}
 
-        setTimeout(async function() {
-            const {output} = await ton.rawApi.runLocal({
-                address: dexrootAddr,
-                functionCall: {
-                    abi: JSON.stringify(DidStorageContract.abi),
-                    method: 'resolveDidDocument',
-                    params: {
-                        id: "0x" + accountInteraction.publicKey
-                    }
-                }
-            });
-            console.log('output');
-            const addrDidDoc = output.addrDidDocument;
-            console.log(output, addrDidDoc);
+		const {output} = await ton.rawApi.runLocal({
+			address: dexrootAddr,
+			functionCall: {
+				abi: JSON.stringify(DidStorageContract.abi),
+				method: 'resolveDidDocument',
+				params: {
+					id: "0x"+accountInteraction.publicKey
+				}
+			}
+		});
 
-            const outputs = await ton.rawApi.runLocal({
-                address: addrDidDoc,
-                functionCall: {
-                    abi: JSON.stringify(DidDocumentContract.abi),
-                    method: 'getDid',
-                    params: {}
-                }
-            });
+		console.log('output');
+		const addrDidDoc = output.addrDidDocument;
+		console.log(output, addrDidDoc);
 
-            console.log(outputs);
-    
-    
-            // const acc2 = new Account(DidStorageContract, {
-            //     address: dexrootAddr,
-            //     signer: signerNone(),
-            //     client,
-            // });
-            // const res2 = await acc2.runLocal("resolveDidDocument", {
-            //     id: "0x" + pubkey,
-            // });
-    
-            // console.log(res2);
-    
-            // let addrDidDoc = res2.decoded.out_messages[0].value.addrDidDocument;
-    
-            // const didAcc = new Account(DidDocumentContract, {
-            //     address: addrDidDoc,
-            //     signer: signerNone(),
-            //     client,
-            // });
-    
-            // const resDid = await didAcc.runLocal("getDid", {});
-    
-            // //setDidDoc(resDid.decoded.out_messages[0].value.value0);
-            // console.log(resDid.decoded.out_messages[0].value.value0);
-        }, 1000);
-        
+		console.log(accountInteraction.address);
 
-		// try {
-
-		// 	const newDIDDoc2 = {
-		// 		id: pubkey.toString()
-		// 	};
-
-		// 	const {body} = await client.abi.encode_message_body({
-		// 		abi: {type: "Contract", value: DidDocumentContract.abi},
-		// 		signer: {type: "None"},
-		// 		is_internal: true,
-		// 		call_set: {
-		// 			function_name: "newDidStatus",
-		// 			input: {
-		// 				status: false,
-		// 			},
-		// 		},
-		// 	});
-
-		// 	const res = await acc.run("sendTransaction", {
-		// 		dest: dexrootAddr,
-		// 		value: 500000000,
-		// 		bounce: true,
-		// 		flags: 3,
-		// 		payload: body,
-		// 	});
-
-		// 	console.log(res);
-
-		// 	const resDid2 = await didAcc.runLocal("getDid", {});
-
-		// 	console.log(resDid2);
-
-		// } catch (e) {
-		// 	console.log(e);
-		// }
-
-		// const resDid2 = await didAcc.runLocal("getDid", {});
-
-		// 	console.log(resDid2);
-
-		// console.log(pubkey);
+		setTimeout(async function(){
+			try{
+				const restest = await ton.rawApi.sendExternalMessage({
+					local: false,
+					publicKey: accountInteraction.publicKey,
+					recipient: addrDidDoc,
+					payload: {
+						abi: JSON.stringify(DidDocumentContract.abi),
+						method: 'init',
+						params: {
+							issuerAddr: accountInteraction.address
+						}
+					}
+				});
+		
+				console.log(restest);
+			} catch(e) {
+				console.log(e);
+				alert("Error!");
+				setLoader(false);
+				return;
+			}
+	
+			
+	
+	
+			const outputs = await ton.rawApi.runLocal({
+				address: addrDidDoc,
+				functionCall: {
+					abi: JSON.stringify(DidDocumentContract.abi),
+					method: 'getDid',
+					params: {}
+				}
+			});
+	
+			console.log(outputs);
+	
+			let tempDoc = JSON.parse(outputs.output.value0.didDocument);
+	
+			let tempDid = tempDoc.id;
+	
+			console.log(tempDoc);
+	
+			console.log(tempDid);
+	
+			setLoader(false);
+			setAlertW({
+				hidden: false,
+				text: "Your DID has been created: " + tempDid,
+				title: "Congratulations"
+			});
+		},10000);
+					
 	}
+		
 
 	async function resolveDID() {
+
+		//setLoader(true);
+		console.log('initInpageProvider...');
+        
+        const provider = await import('ton-inpage-provider');
+        if (!(await provider.hasTonProvider())) {
+            throw new Error('Extension is not installed');
+        }
+       
+        await ton.ensureInitialized();
+
+        const {accountInteraction} = await ton.rawApi.requestPermissions({
+            permissions: ['tonClient', 'accountInteraction']
+        });
+
+        console.log(accountInteraction);
+
+
+        if (accountInteraction == null) {
+            throw new Error('Insufficient permissions');
+        }
+
 		let tempDid = DID.split(':')[2];
+		console.log(DID);
+		
 
-		const acc = new Account(DEXClientContract, {
-			address: localStorage.address,
-			signer: signerKeys(await getClientKeys(sessionStorage.seed)),
-			client,
-		});
-
-		let pubkey = (await getClientKeys(seed)).public;
-
-		const acc2 = new Account(DidStorageContract, {
+		const {output} = await ton.rawApi.runLocal({
 			address: dexrootAddr,
-			signer: signerNone(),
-			client,
+			functionCall: {
+				abi: JSON.stringify(DidStorageContract.abi),
+				method: 'resolveDidDocument',
+				params: {
+					id: "0x" + tempDid
+				}
+			}
 		});
 
-		const res2 = await acc2.runLocal("resolveDidDocument", {
-			id: "0x" + tempDid,
-		});
+		console.log('output');
+		const addrDidDoc = output.addrDidDocument;
+	
+		try{
 
-		console.log(res2);
+			const outputs = await ton.rawApi.runLocal({
+				address: addrDidDoc,
+				functionCall: {
+					abi: JSON.stringify(DidDocumentContract.abi),
+					method: 'getDid',
+					params: {}
+				}
+			});
+	
+			console.log(outputs.output.value0);
+	
+			let tempDoc = outputs.output.value0;
 
-		let addrDidDoc = res2.decoded.out_messages[0].value.addrDidDocument;
+			setDidDoc(tempDoc);
+			console.log(tempDoc);
 
-		const didAcc = new Account(DidDocumentContract, {
-			address: addrDidDoc,
-			signer: signerNone(),
-			client,
-		});
+		} catch(e) {
+			console.log(e);
+			alert("Error! \n Possible reasons: \n - Wrong DID \n - This DID has been deleted");
+		}
 
-		const resDid = await didAcc.runLocal("getDid", {});
 
-		setDidDoc(resDid.decoded.out_messages[0].value.value0);
-		console.log(resDid.decoded.out_messages[0].value.value0);
+		// try{
+		// 	const didAcc = new Account(DidDocumentContract, {
+		// 		address: addrDidDoc,
+		// 		signer: signerNone(),
+		// 		client,
+		// 	});
+	
+		// 	const resDid = await didAcc.runLocal("getDid", {});
+
+		// 	setLoader(false);
+		// 	setDidDoc(resDid.decoded.out_messages[0].value.value0);
+		// 	console.log(resDid.decoded.out_messages[0].value.value0);
+		// } catch(e) {
+		// 	console.log(e);
+		// 	setLoader(false);
+		// 	alert("Error! \n Possible reasons: \n - Wrong DID \n - This DID has been deleted");
+		// }
+
+		
+		
 	}
 
 	async function updateDIDDocument() {
-		const acc = new Account(DEXClientContract, {
-			address: localStorage.address,
-			signer: signerKeys(await getClientKeys(sessionStorage.seed)),
-			client,
-		});
+		
 
-		let pubkey = (await getClientKeys(seed)).public;
 
-		const acc2 = new Account(DidStorageContract, {
-			address: dexrootAddr,
-			signer: signerNone(),
-			client,
-		});
 
-		const res2 = await acc2.runLocal("resolveDidDocument", {
-			id: "0x" + pubkey,
-		});
-
-		console.log(res2);
-
-		let addrDidDoc = res2.decoded.out_messages[0].value.addrDidDocument;
-
-		const didAcc = new Account(DidDocumentContract, {
-			address: addrDidDoc,
-			signer: signerNone(),
-			client,
-		});
-
-		console.log(JSON.stringify(didDoc.didDocument));
-
-		try {
-			const {body} = await client.abi.encode_message_body({
-				abi: {type: "Contract", value: DidDocumentContract.abi},
-				signer: {type: "None"},
-				is_internal: true,
-				call_set: {
-					function_name: "newDidDocument",
-					input: {
-						didDocument: didDoc.didDocument,
-					},
-				},
-			});
-
-			const res = await acc.run("sendTransaction", {
-				dest: addrDidDoc,
-				value: 300000000,
-				bounce: true,
-				flags: 3,
-				payload: body,
-			});
-
-			console.log(res);
-		} catch (e) {
-			console.log(e);
+		if(curentStatus == undefined) {
+			alert("Set status");
+			return;
 		}
 
-		const resDid = await didAcc.runLocal("getDid", {});
+		let tempDid = DID.split(':')[2];
+		console.log(DID);
 
-		//setDidDoc(resDid.decoded.out_messages[0].value.value0);
-		console.log(resDid.decoded.out_messages[0].value.value0);
+		
+		setLoader(true);
+		console.log('initInpageProvider...');
+        
+        const provider = await import('ton-inpage-provider');
+        if (!(await provider.hasTonProvider())) {
+            throw new Error('Extension is not installed');
+        }
+       
+        await ton.ensureInitialized();
+
+        const {accountInteraction} = await ton.rawApi.requestPermissions({
+            permissions: ['tonClient', 'accountInteraction']
+        });
+
+        console.log(accountInteraction);
+
+
+        if (accountInteraction == null) {
+            throw new Error('Insufficient permissions');
+        }
+
+		const {output} = await ton.rawApi.runLocal({
+			address: dexrootAddr,
+			functionCall: {
+				abi: JSON.stringify(DidStorageContract.abi),
+				method: 'resolveDidDocument',
+				params: {
+					id: "0x"+tempDid
+				}
+			}
+		});
+
+		console.log('output');
+		const addrDidDoc = output.addrDidDocument;
+		console.log(output, addrDidDoc);
+
+		try {
+
+            const response = await ton.rawApi.sendMessage({
+                sender: accountInteraction.address,
+                recipient: addrDidDoc,
+                amount: '300000000',
+                bounce: true,
+                payload: {
+                    abi: JSON.stringify(DidDocumentContract.abi),
+                    method: 'newDidDocument',
+                    params: {
+						didDocument: didDoc.didDocument
+                    }
+                }
+            });
+            console.log('response');
+            console.log(response);
+
+			
+		} catch (e) {
+			console.log(e);
+			setLoader(false);
+			alert("Error");
+		}
+
+
+		setTimeout(async function(){
+			const output2 = await ton.rawApi.runLocal({
+				address: addrDidDoc,
+				functionCall: {
+					abi: JSON.stringify(DidDocumentContract.abi),
+					method: 'getDid',
+					params: {}
+				}
+			});
+	
+			console.log('output2');
+			console.log(output2);
+
+			
+
+			setDidDoc(output2.output.value0);
+			console.log(output2.output.value0);
+			setLoader(false);
+		}, 20000);
+		
 	}
 
 	function addAttribute() {
@@ -429,11 +535,447 @@ function WelcomeDidPageEver() {
 
 	}
 
+	async function updateDidStatus() {
+
+		if(curentStatus == undefined) {
+			alert("Set status");
+			return;
+		}
+
+		let tempDid = DID.split(':')[2];
+		console.log(DID);
+
+		
+		setLoader(true);
+		console.log('initInpageProvider...');
+        
+        const provider = await import('ton-inpage-provider');
+        if (!(await provider.hasTonProvider())) {
+            throw new Error('Extension is not installed');
+        }
+       
+        await ton.ensureInitialized();
+
+        const {accountInteraction} = await ton.rawApi.requestPermissions({
+            permissions: ['tonClient', 'accountInteraction']
+        });
+
+        console.log(accountInteraction);
+
+
+        if (accountInteraction == null) {
+            throw new Error('Insufficient permissions');
+        }
+
+		const {output} = await ton.rawApi.runLocal({
+			address: dexrootAddr,
+			functionCall: {
+				abi: JSON.stringify(DidStorageContract.abi),
+				method: 'resolveDidDocument',
+				params: {
+					id: "0x"+tempDid
+				}
+			}
+		});
+
+		console.log('output');
+		const addrDidDoc = output.addrDidDocument;
+		console.log(output, addrDidDoc);
+
+		try {
+
+            const response = await ton.rawApi.sendMessage({
+                sender: accountInteraction.address,
+                recipient: addrDidDoc,
+                amount: '300000000',
+                bounce: true,
+                payload: {
+                    abi: JSON.stringify(DidDocumentContract.abi),
+                    method: 'newDidStatus',
+                    params: {
+                        status: Number(curentStatus)
+                    }
+                }
+            });
+            console.log('response');
+            console.log(response);
+
+			
+		} catch (e) {
+			console.log(e);
+			setLoader(false);
+			alert("Error");
+		}
+
+
+		setTimeout(async function(){
+			const output2 = await ton.rawApi.runLocal({
+				address: addrDidDoc,
+				functionCall: {
+					abi: JSON.stringify(DidDocumentContract.abi),
+					method: 'getDid',
+					params: {}
+				}
+			});
+	
+			console.log('output2');
+			console.log(output2);
+
+			
+
+			setDidDoc(output2.output.value0);
+			console.log(output2.output.value0);
+			setLoader(false);
+		}, 20000);
+
+	}
+
+	async function updateDidPub() {
+
+		if(curentPub == undefined) {
+			alert("Set PubKey");
+			return;
+		}
+		if(curentAddr == undefined) {
+			alert("Set Address");
+			return;
+		}
+
+
+
+		let tempDid = DID.split(':')[2];
+		console.log(DID);
+
+		
+		setLoader(true);
+		console.log('initInpageProvider...');
+        
+        const provider = await import('ton-inpage-provider');
+        if (!(await provider.hasTonProvider())) {
+            throw new Error('Extension is not installed');
+        }
+       
+        await ton.ensureInitialized();
+
+        const {accountInteraction} = await ton.rawApi.requestPermissions({
+            permissions: ['tonClient', 'accountInteraction']
+        });
+
+        console.log(accountInteraction);
+
+
+        if (accountInteraction == null) {
+            throw new Error('Insufficient permissions');
+        }
+
+		const {output} = await ton.rawApi.runLocal({
+			address: dexrootAddr,
+			functionCall: {
+				abi: JSON.stringify(DidStorageContract.abi),
+				method: 'resolveDidDocument',
+				params: {
+					id: "0x"+tempDid
+				}
+			}
+		});
+
+		console.log('output');
+		const addrDidDoc = output.addrDidDocument;
+		console.log(output, addrDidDoc);
+
+		try {
+
+            const response = await ton.rawApi.sendMessage({
+                sender: accountInteraction.address,
+                recipient: addrDidDoc,
+                amount: '300000000',
+                bounce: true,
+                payload: {
+                    abi: JSON.stringify(DidDocumentContract.abi),
+                    method: 'newDidIssuerPubKey',
+                    params: {
+                        pubKey: "0x"+curentPub,
+						issuerAddr: curentAddr
+                    }
+                }
+            });
+            console.log('response');
+            console.log(response);
+
+			
+		} catch (e) {
+			console.log(e);
+			setLoader(false);
+			alert("Error");
+		}
+
+
+		setTimeout(async function(){
+			const output2 = await ton.rawApi.runLocal({
+				address: addrDidDoc,
+				functionCall: {
+					abi: JSON.stringify(DidDocumentContract.abi),
+					method: 'getDid',
+					params: {}
+				}
+			});
+	
+			console.log('output2');
+			console.log(output2);
+
+			
+
+			setDidDoc(output2.output.value0);
+			console.log(output2.output.value0);
+			setLoader(false);
+		}, 20000);
+
+
+
+	}
+
+	async function deleteDid() {
+
+		let tempDid = DID.split(':')[2];
+		console.log(DID);
+
+		
+		setLoader(true);
+		console.log('initInpageProvider...');
+        
+        const provider = await import('ton-inpage-provider');
+        if (!(await provider.hasTonProvider())) {
+            throw new Error('Extension is not installed');
+        }
+       
+        await ton.ensureInitialized();
+
+        const {accountInteraction} = await ton.rawApi.requestPermissions({
+            permissions: ['tonClient', 'accountInteraction']
+        });
+
+        console.log(accountInteraction);
+
+
+        if (accountInteraction == null) {
+            throw new Error('Insufficient permissions');
+        }
+
+		const {output} = await ton.rawApi.runLocal({
+			address: dexrootAddr,
+			functionCall: {
+				abi: JSON.stringify(DidStorageContract.abi),
+				method: 'resolveDidDocument',
+				params: {
+					id: "0x"+tempDid
+				}
+			}
+		});
+
+		console.log('output');
+		const addrDidDoc = output.addrDidDocument;
+		console.log(output, addrDidDoc);
+
+		try {
+
+            const response = await ton.rawApi.sendMessage({
+                sender: accountInteraction.address,
+                recipient: addrDidDoc,
+                amount: '300000000',
+                bounce: true,
+                payload: {
+                    abi: JSON.stringify(DidDocumentContract.abi),
+                    method: 'deleteDidDocument',
+                    params: {}
+                }
+            });
+            console.log('response');
+            console.log(response);
+
+			
+		} catch (e) {
+			console.log(e);
+			setLoader(false);
+			alert("Error");
+		}
+
+
+		setTimeout(async function(){
+			try{
+				const output2 = await ton.rawApi.runLocal({
+					address: addrDidDoc,
+					functionCall: {
+						abi: JSON.stringify(DidDocumentContract.abi),
+						method: 'getDid',
+						params: {}
+					}
+				});
+		
+				console.log('output2');
+				console.log(output2);
+	
+				
+	
+				setDidDoc(output2.output.value0);
+				console.log(output2.output.value0);
+				setLoader(false);
+				alert("Delete error");
+			} catch(e) {
+				backToLogin();
+				setLoader(false);
+				alert("Document deleted");
+			}
+
+			
+		}, 20000);
+
+		
+
+		
+
+	}
+
+	function backToLogin() {
+
+		setDidDoc("");
+		setDID("");
+
+	}
+
+	function testreq() {
+
+		// let data = '{"user":{"did": "did:everscale:f28b5fb95c2bfdc70b939de1ce2d79e1b8d233223596490827a91bc600fd876d"}}';
+
+		// var xhr = new XMLHttpRequest();
+		// xhr.open("POST", "http://ssi.defispace.com/auth", true);
+		// xhr.setRequestHeader("Content-Type", "application/json; charset=utf-8");
+
+		// xhr.send(data);
+
+		// xhr.onreadystatechange = function() 
+		// {
+		// if (xhr.readyState == 4)
+		// {
+		// 	if(xhr.status == 200) 
+		// 	{
+		// 		console.log(xhr.responseText);
+		// 	}
+		// }
+		// }
+
+		// const request = fetch("https://ssi.defispace.com/auth", {
+		// 		method: "POST",
+		// 		// headers: {"Content-Type": "application/json; charset=utf-8"},
+		// 		body: {
+		// 			body:
+		// 				JSON.parse('{"user":{"did": "did:everscale:f28b5fb95c2bfdc70b939de1ce2d79e1b8d233223596490827a91bc600fd876d"}}'),
+		// 		},
+		// }).then((response) => console.log(response));
+
+		function sendSign(data) {
+			fetch("https://ssi.defispace.com/auth/login", {
+				method: "post",
+				headers: {
+					'Content-Type': 'application/json; charset=utf-8',
+					'Connection' : 'keep-alive'
+				},
+	
+				body: `{
+					"user":
+					{
+						"signatureHex":"${data}",
+						"did": "f28b5fb95c2bfdc70b939de1ce2d79e1b8d233223596490827a91bc600fd876d"
+				}
+				}`
+				}).then((data)=>{
+					return data.json();
+
+				}).then((data)=>{
+					testSign(data.token);
+				})
+		}
+
+		function testSign(data) {
+			fetch("https://ssi.defispace.com/auth/user", {
+				method: "get",
+				headers: {
+					'Content-Type': 'application/json; charset=utf-8',
+					'Connection' : 'keep-alive',
+					'Authorization': `Token ${data}`
+				},
+	
+				
+				}).then((data)=>{
+					return data.json();
+
+				}).then((data)=>{
+					console.log(data);
+				})
+		}
+
+		fetch("https://ssi.defispace.com/auth", {
+			method: "post",
+			headers: {
+				'Content-Type': 'application/json; charset=utf-8',
+				'Connection' : 'keep-alive'
+			},
+
+			body: '{"user":{"did": "f28b5fb95c2bfdc70b939de1ce2d79e1b8d233223596490827a91bc600fd876d"}}'
+			})
+			.then( (response) => { 
+				return response.json();
+				}).then(async function(data) {
+					// data is the parsed version of the JSON returned from the above endpoint.
+					let msg = data.value;
+					//const msgHash = crypto.createHash('sha256').update(msg).digest('hex');
+					const msgHash = sha256(msg).toString();
+					console.log(msgHash);
+
+					let privatemsg = (await getClientKeys(seed)).secret;
+
+					console.log(privatemsg);
+
+					return await ed.sign(msgHash, privatemsg);
+					
+				}).then((data)=>{
+					sendSign(data);
+				});
+
+	}
+
+	// async function signMessage(input) {
+
+    //     const msg = input.message
+    //     const msgHash = crypto.createHash('sha256').update(msg).digest('hex');
+    //     console.log(msgHash)
+
+		
+
+    //     return await ed.sign(msgHash, input.privateKey);
+    // }
 
 	return (
 		<Router>
+
+			<div className={alertW.hidden?"hide":"modal-w modal-welcome"}>
+
+				<button className="close" onClick={()=>setAlertW({hidden: true, text:"", title:""})}>
+					<span></span>
+					<span></span>
+				</button>
+
+				<div class="text">{alertW.title}</div>
+
+				<span class="content">
+					{alertW.text}
+				</span>
+
+			</div>
+
 			{didDoc ? (
-				<div className="modal-w modal-welcome modal-did-document">
+				<div className={alertW.hidden?"modal-w modal-welcome modal-did-document":"hide"}>
+
+					
 					<div className={loader ? "lds-dual-ring" : "hide"}></div>
 					<div className="text">DID Document</div>
 
@@ -443,7 +985,7 @@ function WelcomeDidPageEver() {
 					</div>
 					<div className="attribute">
 						<span>issuerPubKey:</span>
-						{didDoc.issuerPubKey}
+						{BigInt(didDoc.issuerPubKey).toString(16)}
 					</div>
 					<div className="attribute">
 						<span>issuerAddres:</span>
@@ -461,10 +1003,10 @@ function WelcomeDidPageEver() {
 					</div>
 
 					<div className="menu-document">
-						<span className={menuCurent==0?"active":""} onClick={()=>setMenuCurent(0)}>New Document</span>
-						<span className={menuCurent==1?"active":""} onClick={()=>setMenuCurent(1)}>Change Status</span>
-						<span className={menuCurent==2?"active":""} onClick={()=>setMenuCurent(2)}>New IssuerPubKey</span>
-						<span className={menuCurent==3?"active":""} onClick={()=>setMenuCurent(3)}>Delete Document</span>
+						<span className={menuCurent==0?"active":""} onClick={()=>setMenuCurent(0)}>Change document</span>
+						<span className={menuCurent==1?"active":""} onClick={()=>setMenuCurent(1)}>Change status</span>
+						<span className={menuCurent==2?"active":""} onClick={()=>setMenuCurent(2)}>Change owner</span>
+						<span className={menuCurent==3?"active":""} onClick={()=>setMenuCurent(3)}>Delete document</span>
 						
 					</div>
 					<div class="content-document">
@@ -496,21 +1038,22 @@ function WelcomeDidPageEver() {
 						</div>
 						<div className={menuCurent==1?"menu-item":"hide"}>
 							<div>
-								<select name="" id="">
-									<option value="">active</option>
-									<option value="">inactive</option>
+								<select name="" id="" onChange={(ev)=>{setCurentStatus(ev.target.value)}}>
+									<option>1</option>
+									<option>0</option>
 								</select>
 							</div>
-							<button>Save Changes</button>
+							<button onClick={updateDidStatus}>Save Changes</button>
 						</div>
 						<div className={menuCurent==2?"menu-item":"hide"}>
 							<div>
-								<input type="text" placeholder="New PubKey"/>
+								<input type="text" placeholder="New PubKey" onChange={(ev)=>{setCurentPub(ev.target.value)}}/>
+								<input type="text" placeholder="New Address" onChange={(ev)=>{setCurentAddr(ev.target.value)}}/>
 							</div>
-							<button>Save Changes</button>
+							<button onClick={updateDidPub}>Save Changes</button>
 						</div>
 						<div className={menuCurent==3?"menu-item":"hide"}>
-							<button>Delete Document</button>
+							<button onClick={deleteDid}>Delete Document</button>
 						</div>
 						
 					</div>
@@ -520,9 +1063,10 @@ function WelcomeDidPageEver() {
 					<div className="note">
 						Note: Transactions can take 5 to 15 seconds
 					</div>
+					<button onClick={backToLogin}>Back</button>
 				</div>
 			) : (
-				<div className="modal-w modal-welcome">
+				<div className={alertW.hidden?"modal-w modal-welcome":"hide"}>
 					<div className={loader ? "lds-dual-ring" : "hide"}></div>
 					<div className="text">Welcome!</div>
 
@@ -555,10 +1099,11 @@ function WelcomeDidPageEver() {
 					>
 						Log in with DID
 					</button>
+
 				</div>
 			)}
 		</Router>
 	);
 }
 
-export default WelcomeDidPageEver;
+export default WelcomeDidPage;
